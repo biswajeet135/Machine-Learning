@@ -1,0 +1,129 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Biswajeet Sahoo"
+date: "October 9, 2017"
+output: html_document
+---
+##Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+##Data
+The training data for this project are available here: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har.
+
+```{r echo=TRUE}
+train <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+
+testFinal <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+```
+
+Let's get a quick look at our train data.
+```{r echo=TRUE}
+head(train)
+str(train)
+names(train)
+```
+
+##SPLITTING DATA
+
+We will split data into training, testing and validation sets.
+
+```{r echo=TRUE}
+library(caret)
+library(dplyr)
+library(ggplot2)
+library(RANN)
+library(randomForest)
+
+set.seed(99)
+trval <- createDataPartition(train$classe,p = 0.6, list = FALSE)
+trainFinal <- train[trval,]
+
+test <- train[-trval,]
+ 
+```
+
+##PREPROCESSING
+
+Let's delete the low variance variables from the data, as they cannot be used to get any valuable insight.
+
+```{r echo=TRUE}
+nzv <- nearZeroVar(trainFinal, saveMetrics=TRUE)
+trainFinal <- trainFinal[,nzv$nzv==FALSE]
+
+nzv<- nearZeroVar(test,saveMetrics=TRUE)
+test <- test[,nzv$nzv==FALSE]
+
+
+# drop NA variables
+
+na <-  integer()
+for (i in 1:ncol(trainFinal)) {
+    ratio <- sum(is.na(trainFinal[, i])) / nrow(trainFinal) 
+    if (ratio > 0.5) { na <- c(na, i) }
+}
+
+trainFinal <- trainFinal[, -c(na)]
+trainFinal <- trainFinal[, -1]
+str(trainFinal)
+
+
+#Making the test data similar to train
+test <- test[, names(trainFinal)]
+
+```
+
+##Random Forest Model
+
+I decided to use the random forest model to build my machine learning algorithm as it is appropriate for a classification problem as we have and based on information provided in class lectures this model tends to be more accurate than some other classification models.
+
+Below I fit my model on my training data and then use my model to predict classe on my subset of data used for cross validation.
+
+```{r echo=TRUE}
+model <- randomForest(classe ~ ., data = trainFinal) 
+print(model)
+```
+
+```{r echo=TRUE}
+#cross validation on my testing data
+#out of sample error
+predict1 <- predict(model, test, type = "class")
+confusionMatrix(test$classe, predict1)
+
+
+
+```
+
+
+##Error
+
+As we can see from the model summaries above, when we run the model on our test data for cross validation we get an accuracy of 99.4% that we can estimate to be our out of sample error. When the model is fitted to the training data used to build the model it shows 100% accuracy, which we can assume as our in sample error.
+
+##Apply to final test set
+
+Finally, we apply our model to the final test data. Upon submission all predictions were correct!
+
+```{r echo=TRUE}
+# This uses the code supplied by the class instructions
+
+testFinal <- testFinal[, names(test)[1:57]]
+common <- intersect(names(trainFinal), names(testFinal)) 
+for (p in common) { 
+  if (class(trainFinal[[p]]) == "factor") { 
+    levels(testFinal[[p]]) <- levels(trainFinal[[p]]) 
+  } 
+}
+
+answers <- predict(model, newdata=testFinal)
+pml_write_files = function(x){
+    n = length(x)
+    for(i in 1:n){
+      filename = paste0("problem_id_",i,".txt")
+      write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+    }
+}
+pml_write_files(answers)
+```
